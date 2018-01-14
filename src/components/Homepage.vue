@@ -35,8 +35,20 @@
 </template>
 
 <script>
+
+import Vue from 'vue';
+import { Input, Button, Table, TableColumn, Loading } from 'element-ui';
+
+Vue.use(Loading.directive);
+
 export default {
   name: 'Homepage',
+  components: {
+    'el-input': Input,
+    'el-button': Button,
+    'el-table': Table,
+    'el-table-column': TableColumn,
+  },
   data() {
     return {
       input: '',
