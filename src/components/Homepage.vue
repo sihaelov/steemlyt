@@ -67,10 +67,10 @@ export default {
           followersTable.follower,
           followersTable.following,
           accountsTable.name,
-          accountsTable.vesting_shares,
-          accountsTable.delegated_vesting_shares,
-          accountsTable.received_vesting_shares,
-          ff.number_followers
+          ff.number_followers,
+          steemPowerTable.my_vesting_shares,
+          steemPowerTable.my_delegated_vesting_shares,
+          steemPowerTable.my_received_vesting_shares
         FROM
           Followers as followersTable
             LEFT JOIN Accounts as accountsTable ON followersTable.follower = accountsTable.name
@@ -80,16 +80,24 @@ export default {
               GROUP BY following
             ) as ff
             ON accountsTable.name = ff.following
+            LEFT JOIN (
+              SELECT
+                name,
+                (SELECT TOP 1 convert(float,value)
+                    FROM STRING_SPLIT(vesting_shares, ' ')
+                ) as my_vesting_shares,
+                (SELECT TOP 1 convert(float,value)
+                    FROM STRING_SPLIT(delegated_vesting_shares, ' ')
+                ) as my_delegated_vesting_shares,
+                (SELECT TOP 1 convert(float,value)
+                    FROM STRING_SPLIT(received_vesting_shares, ' ')
+                ) as my_received_vesting_shares
+                FROM Accounts
+            ) as steemPowerTable
+            ON accountsTable.name = steemPowerTable.name
         WHERE followersTable.following='{username}'
-        ORDER BY ff.number_followers DESC
+        ORDER BY (steemPowerTable.my_vesting_shares + steemPowerTable.my_received_vesting_shares - steemPowerTable.my_delegated_vesting_shares) DESC
       `;
-      /*
-      ORDER BY
-        (accountsTable.vesting_shares +
-          accountsTable.received_vesting_shares -
-          accountsTable.delegated_vesting_shares)
-      DESC
-      */
 
       const ajaxData = {
         query: sql.replace('{username}', this.input.replace('@', '')),
@@ -142,9 +150,9 @@ export default {
       const newTableData = [];
 
       this.tableData.forEach((row) => {
-        const vests = parseFloat(row.vesting_shares.split(' ')[0]);
-        const delegatedVests = parseFloat(row.delegated_vesting_shares.split(' ')[0]);
-        const receivedVests = parseFloat(row.received_vesting_shares.split(' ')[0]);
+        const vests = parseFloat(row.my_vesting_shares);
+        const delegatedVests = parseFloat(row.my_delegated_vesting_shares);
+        const receivedVests = parseFloat(row.my_received_vesting_shares);
 
         const steemPower = totalVestingFundSteem * (vests / totalVestingShares);
         const delegatedSteemPower = totalVestingFundSteem * (delegatedVests / totalVestingShares);
