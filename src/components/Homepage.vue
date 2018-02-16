@@ -8,26 +8,74 @@
       Built by <a href="https://steemit.com/@emptyname" target="_blank">@emptyname</a>
     </p>
 
-    <el-input placeholder="@username" v-model="input">
-      <el-button v-on:click="submitData" slot="append" icon="el-icon-search"></el-button>
-    </el-input>
+    <div class="followers__search">
+      <el-input
+        placeholder="@username"
+        v-model="input"
+        v-on:keyup.enter.native="submitData"
+        :autofocus="true">
+          <el-button v-on:click="submitData" slot="append" icon="el-icon-search"></el-button>
+      </el-input>
+    </div>
 
-    <el-card class="table-wrapper">
-      
-      <el-table :data="tableData" v-loading="isLoading">
-        <el-table-column prop="follower" label="Name"></el-table-column>
-        <el-table-column prop="total_followers" label="Followers" width="105"></el-table-column>
-        <el-table-column prop="total_steem_power" label="Steem Power" width="110"></el-table-column>
+    <div class="followers__main-content">
 
-        <!--
-          <el-table-column prop="steem_power" label="steem_power"></el-table-column>
-          <el-table-column prop="delegated_steem_power" label="delegated_steem_power"></el-table-column>
-          <el-table-column prop="received_steem_power" label="received_steem_power"></el-table-column>
-          <el-table-column prop="total_steem_power_raw" label="total_steem_power_raw"></el-table-column>
-        -->
-      </el-table>
+      <div class="followers__filters">
 
-    </el-card>
+        <el-select
+          v-model="orderType"
+          placeholder="Sort by"
+          @change="changeOrder"
+          class="followers__order">
+            <el-option
+              v-for="item in orderTypeOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value">
+            </el-option>
+        </el-select>
+
+        <el-select
+          v-model="massFollowersFilter"
+          placeholder="Show/hide mass-followers"
+          clearable
+          @change="changeMassFollowersFilter">
+            <el-option
+              v-for="item in massFollowersOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value">
+            </el-option>
+        </el-select>
+      </div>
+
+      <el-card class="table-wrapper">
+        <el-table :data="tableData" v-loading="isLoading">
+          <el-table-column prop="follower" label="Name">
+            <template slot-scope="scope">
+              <a :href="`https://steemit.com/@${scope.row.follower}`" target="_blank">
+                {{scope.row.follower}}
+              </a>
+            </template>
+          </el-table-column>
+          <el-table-column prop="number_followers" label="Followers" width="105"></el-table-column>
+          <el-table-column prop="number_following" label="Following" width="105"></el-table-column>
+
+          <!-- <el-table-column prop="ratio" label="Ratio" width="60"></el-table-column> -->
+          <!-- <el-table-column prop="reverse_ratio" label="rev ratio" width="60"></el-table-column> -->
+
+          <el-table-column prop="total_steem_power" label="Steem Power" width="120"></el-table-column>
+
+          <!--
+            <el-table-column prop="steem_power" label="steem_power"></el-table-column>
+            <el-table-column prop="delegated_steem_power" label="delegated_steem_power"></el-table-column>
+            <el-table-column prop="received_steem_power" label="received_steem_power"></el-table-column>
+            <el-table-column prop="total_steem_power_raw" label="total_steem_power_raw"></el-table-column>
+          -->
+        </el-table>
+      </el-card>
+
+    </div>
 
   </div> <!-- /.followers -->
 
@@ -36,7 +84,7 @@
 <script>
 
 import Vue from 'vue';
-import { Input, Button, Table, TableColumn, Card, Loading } from 'element-ui';
+import { Input, Button, Table, TableColumn, Card, Loading, Select, Option } from 'element-ui';
 import steem from 'steem';
 
 Vue.use(Loading.directive);
@@ -49,25 +97,90 @@ export default {
     'el-table': Table,
     'el-table-column': TableColumn,
     'el-card': Card,
+    'el-select': Select,
+    'el-option': Option,
   },
   data() {
     return {
       input: '',
       tableData: [],
       isLoading: false,
+      orderType: 'steemPower',
+      orderTypeOptions: [
+        {
+          value: 'steemPower',
+          label: 'Sort: Steem Power',
+        },
+        {
+          value: 'followers',
+          label: 'Sort: Followers',
+        },
+        {
+          value: 'following',
+          label: 'Sort: Following',
+        },
+      ],
+
+      massFollowersFilter: '',
+      massFollowersOptions: [
+        {
+          value: 'show',
+          label: 'Show only mass-followers',
+        },
+        {
+          value: 'hide',
+          label: 'Hide mass-followers',
+        },
+      ],
     };
   },
   methods: {
 
+    changeOrder() {
+      if (!this.tableData.length) {
+        return;
+      }
+
+      this.submitData();
+    },
+
+    changeMassFollowersFilter() {
+      if (!this.tableData.length) {
+        return;
+      }
+
+      this.submitData();
+    },
+
     submitData() {
+      if (!this.input) {
+        return;
+      }
+
       this.isLoading = true;
 
-      const sql = `
+      const orderTypeList = {
+        steemPower: '(steemPowerTable.my_vesting_shares + steemPowerTable.my_received_vesting_shares - steemPowerTable.my_delegated_vesting_shares)',
+        followers: 'numberFollowersTable.number_followers_raw',
+        following: 'numberFollowingTable.number_following_raw',
+      };
+
+      const massFollowersFilterList = {
+        show: 'AND (numberFollowingTable.number_following_raw / numberFollowersTable.number_followers_raw) >= 1 AND numberFollowersTable.number_followers_raw > 200',
+        hide: 'AND (numberFollowingTable.number_following_raw / numberFollowersTable.number_followers_raw) < 1',
+      };
+
+      let sql = `
         SELECT TOP 50
           followersTable.follower,
           followersTable.following,
           accountsTable.name,
-          ff.number_followers,
+
+          numberFollowersTable.number_followers_raw,
+          numberFollowingTable.number_following_raw,
+          (numberFollowersTable.number_followers_raw / numberFollowingTable.number_following_raw) as ratio,
+          (numberFollowingTable.number_following_raw / numberFollowersTable.number_followers_raw) as reverse_ratio,
+
           steemPowerTable.my_vesting_shares,
           steemPowerTable.my_delegated_vesting_shares,
           steemPowerTable.my_received_vesting_shares
@@ -75,32 +188,49 @@ export default {
           Followers as followersTable
             LEFT JOIN Accounts as accountsTable ON followersTable.follower = accountsTable.name
             LEFT JOIN (
-              SELECT COUNT(*) as number_followers, following
+              SELECT COUNT(*) as number_followers_raw, following
               FROM Followers
               GROUP BY following
-            ) as ff
-            ON accountsTable.name = ff.following
+            ) as numberFollowersTable
+            ON accountsTable.name = numberFollowersTable.following
+            LEFT JOIN (
+              SELECT COUNT(*) as number_following_raw, follower
+              FROM Followers
+              GROUP BY follower
+            ) as numberFollowingTable
+            ON accountsTable.name = numberFollowingTable.follower
             LEFT JOIN (
               SELECT
                 name,
                 (SELECT TOP 1 convert(float,value)
-                    FROM STRING_SPLIT(vesting_shares, ' ')
+                  FROM STRING_SPLIT(vesting_shares, ' ')
                 ) as my_vesting_shares,
                 (SELECT TOP 1 convert(float,value)
-                    FROM STRING_SPLIT(delegated_vesting_shares, ' ')
+                  FROM STRING_SPLIT(delegated_vesting_shares, ' ')
                 ) as my_delegated_vesting_shares,
                 (SELECT TOP 1 convert(float,value)
-                    FROM STRING_SPLIT(received_vesting_shares, ' ')
+                  FROM STRING_SPLIT(received_vesting_shares, ' ')
                 ) as my_received_vesting_shares
                 FROM Accounts
             ) as steemPowerTable
             ON accountsTable.name = steemPowerTable.name
-        WHERE followersTable.following='{username}'
-        ORDER BY (steemPowerTable.my_vesting_shares + steemPowerTable.my_received_vesting_shares - steemPowerTable.my_delegated_vesting_shares) DESC
+        WHERE followersTable.following='{username}' {massFollowersFilter}
+        ORDER BY {orderType} DESC
       `;
 
+      const currentUsername = this.input.replace('@', '');
+      sql = sql.replace('{username}', currentUsername);
+      const currentOrderType = orderTypeList[this.orderType];
+      sql = sql.replace('{orderType}', currentOrderType);
+
+      let currentMassFollowersFilter = '';
+      if (this.massFollowersFilter) {
+        currentMassFollowersFilter = massFollowersFilterList[this.massFollowersFilter];
+      }
+      sql = sql.replace('{massFollowersFilter}', currentMassFollowersFilter);
+
       const ajaxData = {
-        query: sql.replace('{username}', this.input.replace('@', '')),
+        query: sql,
       };
 
       fetch('https://sql.steemhelpers.com/api', {
@@ -168,7 +298,10 @@ export default {
           received_steem_power: receivedSteemPower,
           total_steem_power_raw: totalSteemPowerRaw,
           total_steem_power: totalSteemPower,
-          total_followers: this.formatter(row.number_followers),
+          number_followers: this.formatter(row.number_followers_raw),
+          number_following: this.formatter(row.number_following_raw),
+          ratio: row.ratio,
+          reverse_ratio: row.reverse_ratio,
         });
 
         newTableData.push(newRow);
@@ -191,26 +324,45 @@ export default {
 <!-- Add "scoped" attribute to limit CSS to this component only -->
 <style>
 
+  a {
+    color: #039be5;
+    text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
   .followers{
     text-align: center;
     margin-top: 60px;
   }
 
-  .followers .el-input{
+  .followers .followers__search .el-input{
     max-width: 300px;
     margin-top: 50px;
   }
 
-  .followers .el-input div.el-input-group__append{
+  .followers .followers__search .el-input div.el-input-group__append{
     transition: 0.1s;
   }
-  .followers .el-input div.el-input-group__append:hover{
+  .followers .followers__search .el-input div.el-input-group__append:hover{
     background: rgba(227,234,255,.7);
   }
 
-  .followers .table-wrapper{
-    max-width: 400px;
+  .followers__main-content{
+    max-width: 505px;
+    /*max-width: 705px;*/
     margin: 50px auto;
+  }
+
+  .followers__filters{
+    text-align: left;
+  }
+
+  .followers__filters .followers__order.el-select .el-input__inner{
+    width: 170px;
+  }
+
+  .followers .table-wrapper{
+    margin-top:  20px;
   }
 
   .followers .el-table th:nth-child(2),
